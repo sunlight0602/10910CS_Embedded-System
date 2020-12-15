@@ -19,18 +19,7 @@ TaskHandle_t LCDTaskHandle;
 const int photoPin0 = A0; // right
 const int photoPin1 = A1; // left
 
-int cactus0_x = 8; // initial x of cactus
-int cactus1_x = 14;
-int cactus0_y = 0; // const
-int cactus1_y = 1; // const
-int delay_LED = 10;
-//int delay_cacti = 30; // speed
-int speed = 4; // 2~15
-int is_stop = 0;
-
-int dino_x = 0;
-int dino_y = 0;
-int score = 0;
+const int delay_LED = 10;
 
 typedef struct{
   int x = 0;
