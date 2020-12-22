@@ -1,6 +1,6 @@
 #include <Arduino_FreeRTOS.h> // for TaskHandle_t
 #include <Wire.h>
-#include <Keypad.h>
+//#include <Keypad.h>
 #include <LiquidCrystal_I2C.h>
 #include <Queue.h>
 #include <semphr.h>
@@ -16,7 +16,7 @@ byte broken[8] = {B00100, B10101, B01110, B11111, B11111, B01110, B10101, B00100
 // Task Handler
 TaskHandle_t LCDTaskHandle;
 SemaphoreHandle_t gatekeeper = 0;
-SemaphoreHandle_t sema_v = 0; 
+SemaphoreHandle_t binary_sem;
 
 const int delay_LED = 10;
 
@@ -98,6 +98,11 @@ void displayTask(void *pvParameters){
         
         lcd.clear();
         lcd.setCursor(0, 0);
+        lcd.print("broken");
+        delay(1000);
+        
+        lcd.clear();
+        lcd.setCursor(0, 0);
         lcd.print("Game Over");
         delay(1000);
   
@@ -125,67 +130,74 @@ void displayTask(void *pvParameters){
   }
 }
 
-coor cactus_move(coor orig_coor){ // object_to_move
-//void cactusTask(*pvParameters){
-
-  while(1){ // random until valid
-    // Choose between up, down, right, left
-    int dir = random(0, 4);
-  
-    // Move cactus
-    if(dir==0){ // left
-      if(orig_coor.x!=0){
-        if(orig_coor.x-1!=dino_c.x || orig_coor.y!=dino_c.y){
-          orig_coor.x = orig_coor.x-1;
-          break;
+void cactusTask(void *pvParameters){
+  for(;;){
+    if(xSemaphoreTake(binary_sem, 100)){
+      Serial.println("enter cactusTask binary_sem");
+      
+      while(1){ // random until valid
+        int dir = random(0, 4); // Choose between up, down, right, left
+      
+        // Move cactus
+        if(dir==0){ // left
+          if(cac1_c.x!=0){
+            if(cac1_c.x-1!=dino_c.x || cac1_c.y!=dino_c.y){
+              cac1_c.x = cac1_c.x-1;
+              break;
+            }
+          }
+        }
+        else if(dir==1){ // right
+          if(cac1_c.x!=15){
+            if(cac1_c.x+1!=dino_c.x || cac1_c.y!=dino_c.y){
+              cac1_c.x = cac1_c.x+1;
+              break;
+            }
+          }
+        }
+        else if(dir==2){ // up
+          if(cac1_c.y!=0){
+            if(cac1_c.x!=dino_c.x || cac1_c.y-1!=dino_c.y){
+              cac1_c.y = 0;
+              break;
+            }
+          }
+        }
+        else if(dir==3){ // down
+          if(cac1_c.y!=1){
+            if(cac1_c.x!=dino_c.x || cac1_c.y+1!=dino_c.y){
+              cac1_c.y = 1;
+              break;
+            }
+          }
         }
       }
-    }
-    else if(dir==1){ // right
-      if(orig_coor.x!=15){
-        if(orig_coor.x+1!=dino_c.x || orig_coor.y!=dino_c.y){
-          orig_coor.x = orig_coor.x+1;
-          break;
+    
+      // Collide with egg
+      for(int i=0; i<egg_idx; i++){
+        if(cac1_c.x==egg_x[i] && cac1_c.y==egg_y[i]){
+          //Gameover
+          egg_type[i] = 0; // Change img
         }
       }
+      
+      //xSemaphoreGive(binary_sem);
     }
-    else if(dir==2){ // up
-      if(orig_coor.y!=0){
-        if(orig_coor.x!=dino_c.x || orig_coor.y-1!=dino_c.y){
-          orig_coor.y = 0;
-          break;
-        }
-      }
+    else{
+      Serial.println("cannot cactusTask binary_sem");
     }
-    else if(dir==3){ // down
-      if(orig_coor.y!=1){
-        if(orig_coor.x!=dino_c.x || orig_coor.y+1!=dino_c.y){
-          orig_coor.y = 1;
-          break;
-        }
-      }
-    }
-    //Serial.print("Change\n");
+    
+    vTaskDelay(delay_LED);
   }
-
-  // Collide with egg
-  for(int i=0; i<egg_idx; i++){
-    if(orig_coor.x==egg_x[i] && orig_coor.y==egg_y[i]){
-      //Gameover
-      egg_type[i] = 0; // Change img
-    }
-  }
-  
-  return orig_coor;
 }
 
 
-Keypad myKeypad = Keypad(makeKeymap(keymap), rowPins, colPins, 4, 4);
+//Keypad myKeypad = Keypad(makeKeymap(keymap), rowPins, colPins, 4, 4);
 void dinoTask(void *pvParameters){
   
   for(;;){
     
-    char key = myKeypad.getKey();
+    //char key = myKeypad.getKey();
 
     // Read input from joystick
     int xVal = analogRead(xAxis);
@@ -201,7 +213,7 @@ void dinoTask(void *pvParameters){
 
     // Lay egg
     //if(key=='5' || isPress){ //lay egg
-    if(key=='5'){
+    if(isPress){
       if(dino_c.x!=egg_x[egg_idx-1] || dino_c.y!=egg_y[egg_idx-1]){
         egg_x[egg_idx] = dino_c.x;
         egg_y[egg_idx] = dino_c.y;
@@ -211,7 +223,7 @@ void dinoTask(void *pvParameters){
       }
     }
 
-    // Move dino
+    // Move current dino
     int move_flag = 0;
     if(yVal<490){ // up
       if(dino_c.y==1){
@@ -238,13 +250,14 @@ void dinoTask(void *pvParameters){
       }
     }
 
-    // Move cactus
+    // Move current cactus
     if(move_flag==1){
-      cac1_c = cactus_move(cac1_c);
+      //cac1_c = cactus_move(cac1_c);
+      xSemaphoreGive(binary_sem);
       move_flag = 0;
     }
 
-    // write chars to buf
+    // update buf map
     if(xSemaphoreTake(gatekeeper, 100)){
       Serial.println("controlTask got access");
       for(int i=0; i<2; i++){
@@ -310,9 +323,14 @@ void setup(){
   cac1_c.y = 0;
   
   gatekeeper = xSemaphoreCreateMutex();
+  //vSemaphoreCreateBinary(binary_sem);
+  binary_sem = xSemaphoreCreateBinary();
+  
   xTaskCreate(dinoTask, "dinoTask", 128, NULL, 1, NULL);
-  //xTaskCreate(cactusTask, "cactusTask", 128, NULL, 1, NULL);
+  xTaskCreate(cactusTask, "cactusTask", 60, NULL, 1, NULL);
   xTaskCreate(displayTask, "displayTask", 128, NULL, 1, &LCDTaskHandle);
+
+  vTaskStartScheduler();
   
   //Use memory carefully and set the size of task stack properly
   //Try and error
